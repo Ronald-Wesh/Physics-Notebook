@@ -2,6 +2,8 @@
 
 > **Execution model:** Supervised learning, NOT agent execution. Ronald types all code (tests AND implementations). Claude explains, reviews, and hints. This plan deliberately omits implementation code — it gives exact interfaces, complete test code, the physics equations, and progressive hints. Do not paste solutions.
 
+> **Revision note (2026-08-22):** Task 2 onward restructured per `docs/superpowers/specs/2026-08-21-phase-0-pbl-restructure-design.md` — each original task that mixed new math AND new TypeScript syntax is split into a syntax-only primer, a math-only primer, and an integration task. Tasks 0 and 1 are unchanged (already single-concept, already complete). All interfaces, test code, physics equations, and commit messages below are unchanged from the original plan — only sequencing and framing changed.
+
 **Goal:** A pure-TypeScript physics library (`src/physics/`) with vector math, three integrators (Euler, RK4, velocity Verlet), projectile and pendulum systems — fully unit-tested with Vitest, zero framework dependencies.
 
 **Architecture:** Simulation state is a plain `number[]` (standard ODE form). Integrators are pure functions that take a derivative/acceleration function and a state and return the next state. Systems (projectile, pendulum) supply those derivative functions plus parameter metadata. Nothing imports from React, Next.js, or the DOM.
@@ -137,7 +139,46 @@ describe("Vec2", () => {
 
 ---
 
-### Task 2: Euler integrator + free-fall test
+### Task 2a: Function types & closures (TS only — no physics)
+
+**Reusable in:** callback-based APIs (Express middleware `(req, res, next) => void`), event handlers, any code that accepts a function as configuration (sort comparators, `.map`/`.filter` predicates).
+
+**Concepts to learn first (15 min):**
+- Function type aliases (`type Combiner = (a: number, b: number) => number`)
+- Why `noUncheckedIndexedAccess` flags `arr[i]` as possibly `undefined`, and what `!` actually asserts
+
+**Steps (scratch exercise — no permanent file, no test suite entry):**
+
+- [ ] **Step 1:** In a scratch file (e.g. `src/physics/scratch.ts`, delete when done), write a type alias for a function shape, e.g. `type Combiner = (a: number, b: number) => number`.
+- [ ] **Step 2:** Write 2-3 tiny functions matching that type (add, multiply, etc).
+- [ ] **Step 3:** Write a function that takes a `Combiner` as a parameter and calls it — pass one of your functions in.
+- [ ] **Step 4:** Destructure a `number[]` (e.g. `const [a, b] = someArray`) under `strict`/`noUncheckedIndexedAccess`, observe the "possibly undefined" error, resolve with `!`.
+- [ ] **Step 5:** Delete the scratch file. No commit — this task produces no permanent code.
+
+**Explain-back:** What does `noUncheckedIndexedAccess` protect against? When is `!` an honest fix vs. a lie to the compiler?
+
+---
+
+### Task 2b: What an ODE is + Euler's method (math only — no code)
+
+**Reusable in:** any simulation or animation loop (game physics, particle systems), control systems, numerical methods generally.
+
+**Concepts to learn first (30 min):**
+- State-vector form of a differential equation
+- Euler's method: `y_next = y + f(t, y) * dt` — "walk in the direction of the current slope"
+- 3Blue1Brown "Differential equations" video recommended
+
+**Steps (paper/whiteboard — no code):**
+
+- [ ] **Step 1:** Write free fall as state `[y, vy]` with derivative `[vy, -g]`.
+- [ ] **Step 2:** Hand-compute 2-3 Euler steps for `dt=0.1` starting at rest, height 100.
+- [ ] **Step 3:** Compare your step-3 result to the closed-form answer (`y = 100 - 0.5*9.81*t²`) at the same elapsed time, and note the gap.
+
+**Explain-back:** Why does walking the current slope systematically lag a curving trajectory?
+
+---
+
+### Task 2c: Implement `eulerStep`
 
 **Files:**
 - Create: `src/physics/integrators.ts`
@@ -152,10 +193,7 @@ export type Derivative = (t: number, y: number[]) => number[];
 export function eulerStep(f: Derivative, t: number, y: number[], dt: number): number[];
 ```
 
-**Physics/math to learn first (45 min):**
-- What an ODE is; state-vector form. Free fall: state `[y, vy]`, derivative `[vy, -g]`.
-- Euler's method: `y_next = y + f(t, y) * dt`. It's just "walk in the direction of the current slope."
-- 3Blue1Brown "Differential equations" video recommended.
+You now have both prerequisite pieces — 2a's function-type/array mechanics, 2b's math. This task is pure combination; nothing here should be conceptually new.
 
 - [ ] **Step 1: Write the failing test:**
 
@@ -200,6 +238,10 @@ Note `[y, vy]: number[]` destructuring makes elements possibly-undefined under `
 ---
 
 ### Task 3: RK4 integrator + exactness test
+
+**No new TypeScript today** — reuses exactly the function-type and array patterns from 2a/2c. Only new content is the math.
+
+**Reusable in:** numerical methods broadly (root-finding, optimization, ODE solvers in any language) — pattern of higher-order approximation trading extra computation for accuracy.
 
 **Files:**
 - Modify: `src/physics/integrators.ts`
@@ -247,7 +289,39 @@ describe("rk4Step", () => {
 
 ---
 
-### Task 4: Projectile system module
+### Task 4a: Closures-as-factories (TS only — no physics)
+
+**Reusable in:** React hook factories (`useCallback`/custom hooks with captured config), middleware factories, memoized/cached functions, any "configure once, call many times" API.
+
+**New concept:** a function that *returns* a function, closing over a parameter — distinct from 2a's "pass a function as an argument"; this is "produce a function, customized by captured state."
+
+**Steps (scratch exercise — no permanent file, no test suite entry):**
+
+- [ ] **Step 1:** Write `function multiplier(k: number) { return (x: number) => x * k; }`.
+- [ ] **Step 2:** Call `multiplier(3)` and `multiplier(10)`, store each result, verify each remembers its own `k`.
+- [ ] **Step 3:** Delete the scratch file. No commit.
+
+**Explain-back:** What is a closure? Why doesn't calling `multiplier` twice with different `k` make the two returned functions interfere with each other?
+
+---
+
+### Task 4b: Projectile physics (math only — no code)
+
+**Reusable in:** any first-order damped system (friction, air resistance, RC circuits) — the general shape "rate of change opposes velocity."
+
+**Physics to learn first (30 min):**
+- Projectile with linear drag: `ax = -drag*vx`, `ay = -g - drag*vy`. With `drag = 0`, closed form: range `R = v²·sin(2θ)/g`.
+
+**Steps (paper — no code):**
+
+- [ ] **Step 1:** Write the two acceleration equations above.
+- [ ] **Step 2:** With `drag=0`, compute range for `v=20 m/s, θ=45°` using `R = v²sin(2θ)/g` (expect ≈ 40.775 m).
+
+**Explain-back:** Why does adding drag shorten the range? What does `drag=0` physically mean?
+
+---
+
+### Task 4c: Implement projectile system
 
 **Files:**
 - Create: `src/physics/systems/projectile.ts`
@@ -271,9 +345,7 @@ export function derivative(p: ProjectileParams): Derivative;
 export function launch(speed: number, angle: number): number[];
 ```
 
-**Physics to learn first (30 min):**
-- Projectile with linear drag: `ax = -drag*vx`, `ay = -g - drag*vy`. With `drag = 0`, closed form: range `R = v²·sin(2θ)/g`.
-- Why `derivative(p)` returns a function (closure capturing params) instead of taking params every call.
+Combines 4a's closure shape with 4b's equations — `derivative(p)` is exactly the factory pattern from 4a, applied to the physics from 4b.
 
 - [ ] **Step 1: Failing tests:**
 
@@ -315,6 +387,10 @@ describe("projectile", () => {
 ---
 
 ### Task 5: Pendulum system + SHM period test
+
+**No new TypeScript today** — same `derivative(p)` closure shape as Task 4c. Only new content is the physics (trig, small-angle approximation, energy).
+
+**Reusable in:** any oscillator/spring model (mechanical, electrical LC circuits), energy-conservation sanity checks in general.
 
 **Files:**
 - Create: `src/physics/systems/pendulum.ts`
@@ -374,7 +450,39 @@ describe("pendulum", () => {
 
 ---
 
-### Task 6: Velocity Verlet + the energy-drift showdown
+### Task 6a: Object-shaped state / nested destructuring (TS only — no physics)
+
+**Reusable in:** Redux/Zustand-style state shapes, any struct-of-arrays data model, React state objects with multiple fields.
+
+**New concept:** state as an object with named array fields (`{ pos: number[], vel: number[] }`), replacing Task 2/3's flat `number[]`.
+
+**Steps (scratch exercise — no permanent file, no test suite entry):**
+
+- [ ] **Step 1:** Define a small interface with two array fields (e.g. `{ pos: number[]; vel: number[] }`).
+- [ ] **Step 2:** Write a function taking that shape, destructure one field out of it, return a *new* object of the same shape (no mutation) — same immutability discipline as Vec2 (Task 1), applied to a two-field struct.
+- [ ] **Step 3:** Delete the scratch file. No commit.
+
+**Explain-back:** Why return a new object instead of mutating the field in place? (Same reasoning as Vec2 — say it in your own words.)
+
+---
+
+### Task 6b: Symplectic integration + Verlet algorithm (math only — no code)
+
+**Reusable in:** game engines, orbital mechanics, any long-running simulation where energy stability over many steps matters more than per-step accuracy.
+
+**Math to learn first (45 min):**
+- Velocity Verlet algorithm (Wikipedia "Verlet integration" § Velocity Verlet): half-kick, drift, recompute accel, half-kick.
+- "Symplectic" in one sentence: the integrator conserves a slightly-wrong energy exactly, so real energy oscillates but never drifts — which is why games and orbital sims use it.
+
+**Steps (paper — no code):**
+
+- [ ] **Step 1:** Write the three-step update by hand with made-up numbers: `v_half = v + a(x)*dt/2`, `x_new = x + v_half*dt`, `v_new = v_half + a(x_new)*dt/2`.
+
+**Explain-back:** Why does recomputing acceleration at the *new* position (not the old one) matter for the second half-kick?
+
+---
+
+### Task 6c: Implement `verletStep`, run the energy-drift showdown
 
 **Files:**
 - Modify: `src/physics/integrators.ts`
@@ -392,9 +500,7 @@ export function verletStep(
 ): SecondOrderState;
 ```
 
-**Math to learn first (45 min):**
-- Velocity Verlet algorithm (Wikipedia "Verlet integration" § Velocity Verlet): half-kick, drift, recompute accel, half-kick.
-- "Symplectic" in one sentence: the integrator conserves a slightly-wrong energy exactly, so real energy oscillates but never drifts — which is why games and orbital sims use it.
+Combines 6a's state shape with 6b's algorithm — nothing here should be conceptually new.
 
 - [ ] **Step 1: Failing test — the payoff test of the whole phase:**
 
